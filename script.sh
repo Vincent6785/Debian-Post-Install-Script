@@ -26,7 +26,6 @@ echo -e "${GREEN}Commands that succeed.${NC}"
 echo -e "${BLUE}Commands may require attention, without being a fatal error.${NC}"
 echo -e "${RED}Commands that fail.${NC}"
 echo -e "${BLUE}Additional or progress information.${NC}"
-print_space_line
 
 # Prompt the user for passwords and the SSH key
 print_space_line
@@ -46,7 +45,6 @@ echo
 read -sp "Discord Webhook URL: " discord_webhook_url
 echo
 echo -e "${GREEN}Configuration complete. The script is now autonomous.${NC}"
-print_space_line
 
 send_discord_notification() {
     local message_content=$1
@@ -89,7 +87,6 @@ sudo systemctl enable rsyslog && check_command
 sudo apt-get upgrade -y && check_command
 sudo apt-get autoremove -y && check_command
 echo -e "${GREEN}System successfully updated.${NC}"
-print_space_line
 
 # Check if a user already exists before creating them
 create_user_if_not_exists() {
@@ -118,7 +115,6 @@ echo -e "${BLUE}Creating PAM users...${NC}"
 create_user_if_not_exists "user" 
 create_user_if_not_exists "admin"
 echo -e "${GREEN}PAM users created successfully.${NC}"
-print_space_line
 
 # Create Proxmox users: proxmox-admin and proxmox-reader
 print_space_line
@@ -127,7 +123,6 @@ create_proxmox_user_if_not_exists "proxmox-admin"
 create_proxmox_user_if_not_exists "proxmox-reader"
 sleep 3
 echo -e "${GREEN}PVE users created successfully.${NC}"
-print_space_line
 
 # Set default passwords for each user
 print_space_line
@@ -136,14 +131,12 @@ echo "user:$user_password" | sudo chpasswd && check_command
 echo "admin:$admin_password" | sudo chpasswd && check_command
 echo "root:$root_password" | sudo chpasswd && check_command
 echo -e "${GREEN}Passwords set successfully.${NC}"
-print_space_line
 
 # Add PAM users to appropriate groups
 print_space_line
 echo -e "${BLUE}Adding users to appropriate groups...${NC}"
 sudo usermod -aG sudo admin && check_command
 echo -e "${GREEN}Users added to groups successfully.${NC}"
-print_space_line
 
 # Set passwords for Proxmox users
 print_space_line
@@ -151,7 +144,6 @@ echo -e "${BLUE}Setting passwords for PVE users...${NC}"
 echo -e "$proxmox_admin_password\n$proxmox_admin_password" | sudo pveum passwd proxmox-admin@pve && check_command
 echo -e "$proxmox_reader_password\n$proxmox_reader_password" | sudo pveum passwd proxmox-reader@pve && check_command
 echo -e "${GREEN}Passwords set successfully.${NC}"
-print_space_line
 
 # Assign specific permissions
 print_space_line
@@ -159,7 +151,6 @@ echo -e "${BLUE}Assigning roles to PVE users...${NC}"
 sudo pveum aclmod / -user proxmox-admin@pve -role PVEAdmin && check_command
 sudo pveum aclmod / -user proxmox-reader@pve -role PVEAuditor && check_command
 echo -e "${GREEN}Roles assigned successfully.${NC}"
-print_space_line
 
 # Insert a public SSH key directly into the 'authorized_keys' file of 'user'
 print_space_line
@@ -170,7 +161,6 @@ echo "$ssh_key_user" | sudo tee /home/user/.ssh/authorized_keys > /dev/null && c
 sudo chmod 600 /home/user/.ssh/authorized_keys && check_command
 sudo chown -R user:user /home/user/.ssh && check_command
 echo -e "${GREEN}Public key added successfully.${NC}"
-print_space_line
 
 # Remove sudo rights from the 'user'
 print_space_line
@@ -182,7 +172,6 @@ else
     # If the 'user' does not have sudo rights, display a message
     echo -e "${YELLOW}The 'user' does not have sudo rights, no action needed.${NC}"
 fi
-print_space_line
 
 # Write the SSH configuration
 print_space_line
@@ -232,7 +221,6 @@ echo "Match User admin,root" | sudo tee -a /etc/ssh/sshd_config > /dev/null && c
 echo "  PermitTTY no" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 echo "  ForceCommand echo 'Get the fuck out of here!'" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 echo -e "${GREEN}SSH service configuration complete.${NC}"
-print_space_line
 
 # Iptables Configuration
 print_space_line
@@ -286,7 +274,6 @@ echo "-A OUTPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j LOG
 # End the rules file
 echo "COMMIT" >> $iptables_rules_file
 echo -e "${GREEN}Iptables rules have been saved in $iptables_rules_file but will only be applied on reboot.${NC}"
-print_space_line
 
 # Configure Fail2Ban
 print_space_line
@@ -345,7 +332,6 @@ echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_
 echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
 # Set the time window for failed attempts
 echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-
 # Remove the Proxmox filter file if it exists
 sudo rm -f /etc/fail2ban/filter.d/proxmox.conf && check_command
 # Create the Proxmox filter file
@@ -358,9 +344,7 @@ echo "failregex = pvedaemon\[.*authentication failure; rhost=<HOST> user=.* msg=
 echo "ignoreregex =" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
 # Set the journalmatch for Proxmox
 echo "journalmatch = _SYSTEMD_UNIT=pveproxy.service" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-
 echo -e "${GREEN}Fail2Ban configuration completed.${NC}"
-print_space_line
 
 # Logrotate configuration
 print_space_line
@@ -390,11 +374,9 @@ echo "        /usr/bin/fail2ban-client flushlogs >/dev/null || true" | sudo tee 
 echo "    endscript" | sudo tee -a /etc/logrotate.d/fail2ban > /dev/null && check_command
 echo "}" | sudo tee -a /etc/logrotate.d/fail2ban > /dev/null && check_command
 echo -e "${GREEN}Logrotate configuration completed.${NC}"
-print_space_line
 
 print_space_line
 echo -e "${GREEN}Configuration completed.${NC}"
-print_space_line
 
 # Send a Discord notification to inform of configuration completion
 send_discord_notification "Configuration successfully completed on $(hostname). Restarting the server..."
@@ -402,7 +384,7 @@ send_discord_notification "Configuration successfully completed on $(hostname). 
 # Echo to credit the author of the script
 print_space_line
 echo -e "${BLUE}Script created by @Vincent6785${NC}"
-print_space_line
+
 # Restart the server after 10 seconds
 print_space_line
 echo -e "${BLUE}Restarting the server in 10 seconds...${NC}"
