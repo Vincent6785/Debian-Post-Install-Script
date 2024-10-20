@@ -379,8 +379,9 @@ echo -e "${GREEN}Logrotate configuration completed.${NC}"
 print_space_line
 echo -e "${GREEN}Configuration completed.${NC}"
 
+time=60
 # Send a Discord notification to inform of configuration completion
-send_discord_notification "Configuration successfully completed on $(hostname). Restarting the server..."
+send_discord_notification "Configuration successfully completed on $(hostname). Restarting server in $time seconds..."
 
 # Echo to credit the author of the script
 print_space_line
@@ -388,6 +389,6 @@ echo -e "${BLUE}Script created by @Vincent6785${NC}"
 
 # Restart the server after 10 seconds
 print_space_line
-echo -e "${BLUE}Restarting the server in 10 seconds...${NC}"
-sleep 10
+echo -e "${BLUE}Restarting the server in $time seconds...${NC}"
+sleep 60
 sudo reboot
