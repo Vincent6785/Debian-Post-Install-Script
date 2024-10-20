@@ -406,4 +406,4 @@ print_space_line
 print_space_line
 echo -e "${BLUE}Redémarrage du serveur dans 10 secondes...${NC}"
 sleep 10
-#sudo reboot
+sudo reboot
