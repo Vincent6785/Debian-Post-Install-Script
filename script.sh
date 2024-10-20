@@ -257,8 +257,9 @@ echo "-A INPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_fi
 echo "-A OUTPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_file
 echo "-A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
 echo "-A INPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
-# Allow new incoming connections on port 8006 (Proxmox Web)
-echo "-A INPUT -p tcp --dport 8006 -m conntrack --ctstate NEW -j ACCEPT" >> $iptables_rules_file
+# Allow traffic on port 8006 (Proxmox Web)
+echo "-A INPUT -p tcp --dport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
+echo "-A OUTPUT -p tcp --sport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
 # Add logs for dropped packets
 echo "-A INPUT -j LOG --log-prefix \"Dropped INPUT packet: \" --log-level 4" >> $iptables_rules_file
 echo "-A OUTPUT -j LOG --log-prefix \"Dropped OUTPUT packet: \" --log-level 4" >> $iptables_rules_file
