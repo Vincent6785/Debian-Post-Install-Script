@@ -82,9 +82,10 @@ check_command() {
 print_space_line
 echo -e "${BLUE}Mise à jour du système et installation des dependances...${NC}"
 sudo apt-get update -y && check_command
-sudo apt install net-tools jq fail2ban iptables-persistent -y && check_command
+sudo apt install net-tools jq fail2ban iptables-persistent rsyslog -y && check_command
 sudo systemctl enable netfilter-persistent && check_command
 sudo systemctl enable fail2ban && check_command
+sudo systemctl enable rsyslog && check_command
 sudo apt-get upgrade -y && check_command
 sudo apt-get autoremove -y && check_command
 echo -e "${GREEN}Système mis à jour avec succès.${NC}"
@@ -194,8 +195,10 @@ sudo touch /etc/ssh/sshd_config && check_command
 echo "Include /etc/ssh/sshd_config.d/*.conf" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 # Configurer le port ssh
 echo "Port 6785" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
+# Configurer le SysLogFacility
+echo "SysLogFacility AUTH" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 # Configurer le loglevel
-echo "LogLevel DEBUG" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
+echo "LogLevel VERBOSE" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 # Configurer le login grace time
 echo "LoginGraceTime 20s" | sudo tee -a /etc/ssh/sshd_config > /dev/null && check_command
 # Configurer le nombre de tentatives d'authentification
@@ -329,7 +332,11 @@ echo "[proxmox]" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_co
 # Activer la protection pour Proxmox
 echo "enabled = true" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
 # Définir le port Proxmox
-echo "port = 8006" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
+echo "port = http,https,8006" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
+# Définir le filtre
+echo "filter = proxmox" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
+# Définir le type de backend
+echo "backend = systemd" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
 # Définir le chemin du log access.log
 echo "logpath = /var/log/pveproxy/access.log" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
 # Définir le nombre de tentatives échouées avant le bannissement
@@ -338,6 +345,19 @@ echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check
 echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
 # Définir la fenêtre de temps pendant laquelle les tentatives échouées doivent se produire
 echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local  > /dev/null && check_command
+# Supprimer le fichier de filtre pour Proxmox s'il existe
+sudo rm -f /etc/fail2ban/filter.d/proxmox.conf && check_command
+# Créer le fichier de filtre pour Proxmox
+sudo touch /etc/fail2ban/filter.d/proxmox.conf && check_command
+# Ajouter les configurations au fichier de filtre pour Proxmox
+echo "[Definition]" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf  > /dev/null && check_command
+# Définir failregex pour Proxmox
+echo "failregex = pvedaemon\[.*authentication failure; rhost=<HOST> user=.* msg=.*" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf  > /dev/null && check_command
+# Définir ignoreregex pour Proxmox
+echo "ignoreregex =" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf  > /dev/null && check_command
+# Définir le journalmatch pour Proxmox
+echo "journalmatch = _SYSTEMD_UNIT=pveproxy.service" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf  > /dev/null && check_command
+
 echo -e "${GREEN}Configuration de Fail2Ban terminée.${NC}"
 print_space_line
 
