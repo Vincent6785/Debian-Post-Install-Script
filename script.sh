@@ -36,10 +36,6 @@ read -sp "Password for 'admin': " admin_password
 echo
 read -sp "Password for 'root': " root_password
 echo
-read -sp "Password for 'proxmox-admin': " proxmox_admin_password
-echo
-read -sp "Password for 'proxmox-reader': " proxmox_reader_password
-echo
 read -sp "SSH key for 'user': " ssh_key_user
 echo
 read -sp "Discord Webhook URL: " discord_webhook_url
@@ -99,30 +95,12 @@ create_user_if_not_exists() {
     fi
 }
 
-create_proxmox_user_if_not_exists() {
-    local username=$1
-    if sudo pveum user list | grep -q "$username@pve"; then
-        echo -e "${YELLOW}The user $username@pve already exists${NC}"
-    else > /dev/null
-        sudo pveum useradd "$username@pve" -comment "$username" && check_command
-        echo -e "${GREEN}User $username@pve created successfully${NC}"
-    fi
-}
-
 # Create PAM users: user, admin
 print_space_line
 echo -e "${BLUE}Creating PAM users...${NC}"
 create_user_if_not_exists "user" 
 create_user_if_not_exists "admin"
 echo -e "${GREEN}PAM users created successfully.${NC}"
-
-# Create Proxmox users: proxmox-admin and proxmox-reader
-print_space_line
-echo -e "${BLUE}Creating PVE users...${NC}"
-create_proxmox_user_if_not_exists "proxmox-admin"
-create_proxmox_user_if_not_exists "proxmox-reader"
-sleep 3
-echo -e "${GREEN}PVE users created successfully.${NC}"
 
 # Set default passwords for each user
 print_space_line
@@ -137,20 +115,6 @@ print_space_line
 echo -e "${BLUE}Adding users to appropriate groups...${NC}"
 sudo usermod -aG sudo admin && check_command
 echo -e "${GREEN}Users added to groups successfully.${NC}"
-
-# Set passwords for Proxmox users
-print_space_line
-echo -e "${BLUE}Setting passwords for PVE users...${NC}"
-echo -e "$proxmox_admin_password\n$proxmox_admin_password" | sudo pveum passwd proxmox-admin@pve && check_command
-echo -e "$proxmox_reader_password\n$proxmox_reader_password" | sudo pveum passwd proxmox-reader@pve && check_command
-echo -e "${GREEN}Passwords set successfully.${NC}"
-
-# Assign specific permissions
-print_space_line
-echo -e "${BLUE}Assigning roles to PVE users...${NC}"
-sudo pveum aclmod / -user proxmox-admin@pve -role PVEAdmin && check_command
-sudo pveum aclmod / -user proxmox-reader@pve -role PVEAuditor && check_command
-echo -e "${GREEN}Roles assigned successfully.${NC}"
 
 # Insert a public SSH key directly into the 'authorized_keys' file of 'user'
 print_space_line
@@ -257,9 +221,6 @@ echo "-A INPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_fi
 echo "-A OUTPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_file
 echo "-A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
 echo "-A INPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
-# Allow traffic on port 8006 (Proxmox Web)
-echo "-A INPUT -p tcp --dport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
-echo "-A OUTPUT -p tcp --sport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
 # Add logs for dropped packets
 echo "-A INPUT -j LOG --log-prefix \"Dropped INPUT packet: \" --log-level 4" >> $iptables_rules_file
 echo "-A OUTPUT -j LOG --log-prefix \"Dropped OUTPUT packet: \" --log-level 4" >> $iptables_rules_file
@@ -314,37 +275,6 @@ echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_
 echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
 # Set the time window for failed attempts
 echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set configurations for Proxmox
-echo "# --- Protection for Proxmox ---" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-echo "[proxmox]" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Enable Proxmox protection
-echo "enabled = true" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the Proxmox port
-echo "port = http,https,8006" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the filter
-echo "filter = proxmox" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the backend type
-echo "backend = systemd" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the path to the access.log file
-echo "logpath = /var/log/pveproxy/access.log" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the max number of failed attempts before a ban
-echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the ban time
-echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the time window for failed attempts
-echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Remove the Proxmox filter file if it exists
-sudo rm -f /etc/fail2ban/filter.d/proxmox.conf && check_command
-# Create the Proxmox filter file
-sudo touch /etc/fail2ban/filter.d/proxmox.conf && check_command
-# Add configurations to the Proxmox filter file
-echo "[Definition]" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the failregex for Proxmox
-echo "failregex = pvedaemon\[.*authentication failure; rhost=<HOST> user=.* msg=.*" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the ignoreregex for Proxmox
-echo "ignoreregex =" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the journalmatch for Proxmox
-echo "journalmatch = _SYSTEMD_UNIT=pveproxy.service" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
 echo -e "${GREEN}Fail2Ban configuration completed.${NC}"
 
 # Logrotate configuration
