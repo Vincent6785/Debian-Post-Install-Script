@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# region variables
 # colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -7,19 +8,98 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
+# endregion variables
 
-# check if the script is running as root
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}This script must be executed as root.${NC}"
-    exit 1
-fi
+# region fonctions
+send_discord_notification() {
+    local message_content=$1
+    local discord_webhook_url=$2
+
+    local json_payload=$(jq -n --arg content "$message_content" '{content: $content}')
+    curl -H "Content-Type: application/json" -d "$json_payload" "$discord_webhook_url"
+}
+
+check_command() {
+    if [ $? -ne 0 ]; then
+        local error_message="Error while executing the command: '$BASH_COMMAND' on $(hostname)."
+        echo -e "${RED}$error_message${NC}"
+
+        local recent_history=$(history | tail -n 10)
+        local detailed_message="$error_message\nHistory of recent commands:\n$recent_history"
+
+        echo -e "${RED}$detailed_message${NC}"
+        send_discord_notification "$detailed_message" "$discord_webhook_url"
+
+        exit 1
+    fi
+}
+
+create_user_if_not_exists() {
+    local username=$1
+    if id "$username" &>/dev/null; then
+        echo -e "${YELLOW}User $username already exists${NC}"
+    else
+        sudo useradd -m -s /bin/bash "$username" && check_command
+        echo -e "${GREEN}User $username created successfully${NC}"
+    fi
+}
 
 print_space_line() {
     echo -e "${MAGENTA}----------------------------------------------------------------${NC}"
     echo -e "${MAGENTA}----------------------------------------------------------------${NC}"
 }
+# endregion fonctions
 
-# Display a legend for the user
+# region main
+
+# check if the script is running as sudo
+print_space_line
+echo -e "${BLUE}Checking if the script is running as sudo...${NC}"
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${YELLOW}Ce script doit être exécuté en tant que sudo.${NC}"
+    sudo bash "$0" "$@"
+
+    # exit the current process    
+    exit
+else
+    echo -e "${GREEN}Le script est en cours d'exécution en tant que sudo.${NC}"
+fi
+
+# Vérification des variables d'environnement OU demande de saisie
+if [ -z "$USER_PASSWORD" ]; then
+    print_space_line
+    echo -e "${BLUE}Please enter the passwords for the users.${NC}"
+    read -sp "Password for 'user': " user_password
+    echo
+    echo "export USER_PASSWORD='$user_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$ADMIN_PASSWORD" ]; then
+    read -sp "Password for 'admin': " admin_password
+    echo
+    echo "export ADMIN_PASSWORD='$admin_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$ROOT_PASSWORD" ]; then
+    read -sp "Password for 'root': " root_password
+    echo
+    echo "export ROOT_PASSWORD='$root_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$SSH_KEY_USER" ]; then
+    read -sp "SSH key for 'user': " ssh_key_user
+    echo  
+    echo "export SSH_KEY_USER='$ssh_key_user'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+    read -sp "Discord Webhook URL: " discord_webhook_url
+    echo
+    echo "export DISCORD_WEBHOOK_URL='$discord_webhook_url'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+
+# Exécution du reste du script
 print_space_line
 echo -e "${BLUE}LEGEND:${NC}"
 echo -e "${GREEN}Commands that succeed.${NC}"
@@ -27,50 +107,8 @@ echo -e "${BLUE}Commands may require attention, without being a fatal error.${NC
 echo -e "${RED}Commands that fail.${NC}"
 echo -e "${BLUE}Additional or progress information.${NC}"
 
-# Prompt the user for passwords and the SSH key
-print_space_line
-echo -e "${BLUE}Please enter the passwords for the users.${NC}"
-read -sp "Password for 'user': " user_password
-echo
-read -sp "Password for 'admin': " admin_password
-echo
-read -sp "Password for 'root': " root_password
-echo
-read -sp "SSH key for 'user': " ssh_key_user
-echo
-read -sp "Discord Webhook URL: " discord_webhook_url
-echo
 echo -e "${GREEN}Configuration complete. The script is now autonomous.${NC}"
-
-send_discord_notification() {
-    local message_content=$1
-    local discord_webhook_url=$discord_webhook_url
-
-    # Proper JSON to send to Discord
-    local json_payload=$(jq -n --arg content "$message_content" '{content: $content}')
-
-    # Send the HTTP request to Discord
-    curl -H "Content-Type: application/json" -d "$json_payload" "$discord_webhook_url"
-}
-
-# Function to check if a command fails and send a message to Discord
-check_command() {
-    if [ $? -ne 0 ]; then
-        local error_message="Error while executing the command: '$BASH_COMMAND' on $(hostname)."
-        echo -e "${RED}$error_message${NC}"
-        
-        # Optional: Retrieve the last 10 commands from the history
-        local recent_history=$(history | tail -n 10)
-        local detailed_message="$error_message\nHistory of recent commands:\n$recent_history"
-        
-        echo -e "${RED}$detailed_message${NC}"
-
-        # Call the function to send the notification to Discord
-        send_discord_notification "$detailed_message"
-        
-        exit 1
-    fi
-}
+print_space_line
 
 # Update the system
 print_space_line
@@ -83,17 +121,6 @@ sudo systemctl enable rsyslog && check_command
 sudo apt-get upgrade -y && check_command
 sudo apt-get autoremove -y && check_command
 echo -e "${GREEN}System successfully updated.${NC}"
-
-# Check if a user already exists before creating them
-create_user_if_not_exists() {
-    local username=$1
-    if id "$username" &>/dev/null; then
-        echo -e "${YELLOW}User $username already exists${NC}"
-    else
-        sudo useradd -m -s /bin/bash "$username" && check_command
-        echo -e "${GREEN}User $username created successfully${NC}"
-    fi
-}
 
 # Create PAM users: user, admin
 print_space_line
@@ -310,8 +337,17 @@ print_space_line
 echo -e "${GREEN}Configuration completed.${NC}"
 
 time=60
+
+# Suppression des variables d'environnement
+sed -i '/export USER_PASSWORD=/d' ~/.bashrc
+sed -i '/export ADMIN_PASSWORD=/d' ~/.bashrc
+sed -i '/export ROOT_PASSWORD=/d' ~/.bashrc
+sed -i '/export SSH_KEY_USER=/d' ~/.bashrc
+sed -i '/export DISCORD_WEBHOOK_URL=/d' ~/.bashrc
+source ~/.bashrc
+
 # Send a Discord notification to inform of configuration completion
-send_discord_notification "Configuration successfully completed on $(hostname). Restarting server in $time seconds..."
+send_discord_notification "Configuration successfully completed on $(hostname). Restarting server in $time seconds..." "$discord_webhook_url"
 
 # Echo to credit the author of the script
 print_space_line
@@ -322,3 +358,4 @@ print_space_line
 echo -e "${BLUE}Restarting the server in $time seconds...${NC}"
 sleep 60
 sudo reboot
+# endregion main
