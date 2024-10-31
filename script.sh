@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# region variables
 # colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -7,19 +8,98 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
+# endregion variables
 
-# check if the script is running as root
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}This script must be executed as root.${NC}"
-    exit 1
-fi
+# region fonctions
+send_discord_notification() {
+    local message_content=$1
+    local discord_webhook_url=$2
+
+    local json_payload=$(jq -n --arg content "$message_content" '{content: $content}')
+    curl -H "Content-Type: application/json" -d "$json_payload" "$discord_webhook_url"
+}
+
+check_command() {
+    if [ $? -ne 0 ]; then
+        local error_message="Error while executing the command: '$BASH_COMMAND' on $(hostname)."
+        echo -e "${RED}$error_message${NC}"
+
+        local recent_history=$(history | tail -n 10)
+        local detailed_message="$error_message\nHistory of recent commands:\n$recent_history"
+
+        echo -e "${RED}$detailed_message${NC}"
+        send_discord_notification "$detailed_message" "$discord_webhook_url"
+
+        exit 1
+    fi
+}
+
+create_user_if_not_exists() {
+    local username=$1
+    if id "$username" &>/dev/null; then
+        echo -e "${YELLOW}User $username already exists${NC}"
+    else
+        sudo useradd -m -s /bin/bash "$username" && check_command
+        echo -e "${GREEN}User $username created successfully${NC}"
+    fi
+}
 
 print_space_line() {
     echo -e "${MAGENTA}----------------------------------------------------------------${NC}"
     echo -e "${MAGENTA}----------------------------------------------------------------${NC}"
 }
+# endregion fonctions
 
-# Display a legend for the user
+# region main
+
+# check if the script is running as sudo
+print_space_line
+echo -e "${BLUE}Checking if the script is running as sudo...${NC}"
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${YELLOW}Ce script doit être exécuté en tant que sudo.${NC}"
+    sudo bash "$0" "$@"
+
+    # exit the current process    
+    exit
+else
+    echo -e "${GREEN}Le script est en cours d'exécution en tant que sudo.${NC}"
+fi
+
+# Vérification des variables d'environnement OU demande de saisie
+if [ -z "$USER_PASSWORD" ]; then
+    print_space_line
+    echo -e "${BLUE}Please enter the passwords for the users.${NC}"
+    read -sp "Password for 'user': " user_password
+    echo
+    echo "export USER_PASSWORD='$user_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$ADMIN_PASSWORD" ]; then
+    read -sp "Password for 'admin': " admin_password
+    echo
+    echo "export ADMIN_PASSWORD='$admin_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$ROOT_PASSWORD" ]; then
+    read -sp "Password for 'root': " root_password
+    echo
+    echo "export ROOT_PASSWORD='$root_password'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$SSH_KEY_USER" ]; then
+    read -sp "SSH key for 'user': " ssh_key_user
+    echo  
+    echo "export SSH_KEY_USER='$ssh_key_user'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+    read -sp "Discord Webhook URL: " discord_webhook_url
+    echo
+    echo "export DISCORD_WEBHOOK_URL='$discord_webhook_url'" >> ~/.bashrc
+    source ~/.bashrc
+fi
+
+# Exécution du reste du script
 print_space_line
 echo -e "${BLUE}LEGEND:${NC}"
 echo -e "${GREEN}Commands that succeed.${NC}"
@@ -27,54 +107,8 @@ echo -e "${BLUE}Commands may require attention, without being a fatal error.${NC
 echo -e "${RED}Commands that fail.${NC}"
 echo -e "${BLUE}Additional or progress information.${NC}"
 
-# Prompt the user for passwords and the SSH key
-print_space_line
-echo -e "${BLUE}Please enter the passwords for the users.${NC}"
-read -sp "Password for 'user': " user_password
-echo
-read -sp "Password for 'admin': " admin_password
-echo
-read -sp "Password for 'root': " root_password
-echo
-read -sp "Password for 'proxmox-admin': " proxmox_admin_password
-echo
-read -sp "Password for 'proxmox-reader': " proxmox_reader_password
-echo
-read -sp "SSH key for 'user': " ssh_key_user
-echo
-read -sp "Discord Webhook URL: " discord_webhook_url
-echo
 echo -e "${GREEN}Configuration complete. The script is now autonomous.${NC}"
-
-send_discord_notification() {
-    local message_content=$1
-    local discord_webhook_url=$discord_webhook_url
-
-    # Proper JSON to send to Discord
-    local json_payload=$(jq -n --arg content "$message_content" '{content: $content}')
-
-    # Send the HTTP request to Discord
-    curl -H "Content-Type: application/json" -d "$json_payload" "$discord_webhook_url"
-}
-
-# Function to check if a command fails and send a message to Discord
-check_command() {
-    if [ $? -ne 0 ]; then
-        local error_message="Error while executing the command: '$BASH_COMMAND' on $(hostname)."
-        echo -e "${RED}$error_message${NC}"
-        
-        # Optional: Retrieve the last 10 commands from the history
-        local recent_history=$(history | tail -n 10)
-        local detailed_message="$error_message\nHistory of recent commands:\n$recent_history"
-        
-        echo -e "${RED}$detailed_message${NC}"
-
-        # Call the function to send the notification to Discord
-        send_discord_notification "$detailed_message"
-        
-        exit 1
-    fi
-}
+print_space_line
 
 # Update the system
 print_space_line
@@ -88,41 +122,12 @@ sudo apt-get upgrade -y && check_command
 sudo apt-get autoremove -y && check_command
 echo -e "${GREEN}System successfully updated.${NC}"
 
-# Check if a user already exists before creating them
-create_user_if_not_exists() {
-    local username=$1
-    if id "$username" &>/dev/null; then
-        echo -e "${YELLOW}User $username already exists${NC}"
-    else
-        sudo useradd -m -s /bin/bash "$username" && check_command
-        echo -e "${GREEN}User $username created successfully${NC}"
-    fi
-}
-
-create_proxmox_user_if_not_exists() {
-    local username=$1
-    if sudo pveum user list | grep -q "$username@pve"; then
-        echo -e "${YELLOW}The user $username@pve already exists${NC}"
-    else > /dev/null
-        sudo pveum useradd "$username@pve" -comment "$username" && check_command
-        echo -e "${GREEN}User $username@pve created successfully${NC}"
-    fi
-}
-
 # Create PAM users: user, admin
 print_space_line
 echo -e "${BLUE}Creating PAM users...${NC}"
 create_user_if_not_exists "user" 
 create_user_if_not_exists "admin"
 echo -e "${GREEN}PAM users created successfully.${NC}"
-
-# Create Proxmox users: proxmox-admin and proxmox-reader
-print_space_line
-echo -e "${BLUE}Creating PVE users...${NC}"
-create_proxmox_user_if_not_exists "proxmox-admin"
-create_proxmox_user_if_not_exists "proxmox-reader"
-sleep 3
-echo -e "${GREEN}PVE users created successfully.${NC}"
 
 # Set default passwords for each user
 print_space_line
@@ -137,20 +142,6 @@ print_space_line
 echo -e "${BLUE}Adding users to appropriate groups...${NC}"
 sudo usermod -aG sudo admin && check_command
 echo -e "${GREEN}Users added to groups successfully.${NC}"
-
-# Set passwords for Proxmox users
-print_space_line
-echo -e "${BLUE}Setting passwords for PVE users...${NC}"
-echo -e "$proxmox_admin_password\n$proxmox_admin_password" | sudo pveum passwd proxmox-admin@pve && check_command
-echo -e "$proxmox_reader_password\n$proxmox_reader_password" | sudo pveum passwd proxmox-reader@pve && check_command
-echo -e "${GREEN}Passwords set successfully.${NC}"
-
-# Assign specific permissions
-print_space_line
-echo -e "${BLUE}Assigning roles to PVE users...${NC}"
-sudo pveum aclmod / -user proxmox-admin@pve -role PVEAdmin && check_command
-sudo pveum aclmod / -user proxmox-reader@pve -role PVEAuditor && check_command
-echo -e "${GREEN}Roles assigned successfully.${NC}"
 
 # Insert a public SSH key directly into the 'authorized_keys' file of 'user'
 print_space_line
@@ -257,9 +248,6 @@ echo "-A INPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_fi
 echo "-A OUTPUT -p icmp --icmp-type echo-request -j ACCEPT" >> $iptables_rules_file
 echo "-A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
 echo "-A INPUT -p icmp --icmp-type echo-reply -j ACCEPT" >> $iptables_rules_file
-# Allow traffic on port 8006 (Proxmox Web)
-echo "-A INPUT -p tcp --dport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
-echo "-A OUTPUT -p tcp --sport 8006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" >> $iptables_rules_file
 # Add logs for dropped packets
 echo "-A INPUT -j LOG --log-prefix \"Dropped INPUT packet: \" --log-level 4" >> $iptables_rules_file
 echo "-A OUTPUT -j LOG --log-prefix \"Dropped OUTPUT packet: \" --log-level 4" >> $iptables_rules_file
@@ -314,37 +302,6 @@ echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_
 echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
 # Set the time window for failed attempts
 echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set configurations for Proxmox
-echo "# --- Protection for Proxmox ---" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-echo "[proxmox]" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Enable Proxmox protection
-echo "enabled = true" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the Proxmox port
-echo "port = http,https,8006" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the filter
-echo "filter = proxmox" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the backend type
-echo "backend = systemd" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the path to the access.log file
-echo "logpath = /var/log/pveproxy/access.log" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the max number of failed attempts before a ban
-echo "maxretry = 3" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the ban time
-echo "bantime = 1h" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Set the time window for failed attempts
-echo "findtime = 10m" | sudo tee -a /etc/fail2ban/jail.local > /dev/null && check_command
-# Remove the Proxmox filter file if it exists
-sudo rm -f /etc/fail2ban/filter.d/proxmox.conf && check_command
-# Create the Proxmox filter file
-sudo touch /etc/fail2ban/filter.d/proxmox.conf && check_command
-# Add configurations to the Proxmox filter file
-echo "[Definition]" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the failregex for Proxmox
-echo "failregex = pvedaemon\[.*authentication failure; rhost=<HOST> user=.* msg=.*" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the ignoreregex for Proxmox
-echo "ignoreregex =" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
-# Set the journalmatch for Proxmox
-echo "journalmatch = _SYSTEMD_UNIT=pveproxy.service" | sudo tee -a /etc/fail2ban/filter.d/proxmox.conf > /dev/null && check_command
 echo -e "${GREEN}Fail2Ban configuration completed.${NC}"
 
 # Logrotate configuration
@@ -380,8 +337,17 @@ print_space_line
 echo -e "${GREEN}Configuration completed.${NC}"
 
 time=60
+
+# Suppression des variables d'environnement
+sed -i '/export USER_PASSWORD=/d' ~/.bashrc
+sed -i '/export ADMIN_PASSWORD=/d' ~/.bashrc
+sed -i '/export ROOT_PASSWORD=/d' ~/.bashrc
+sed -i '/export SSH_KEY_USER=/d' ~/.bashrc
+sed -i '/export DISCORD_WEBHOOK_URL=/d' ~/.bashrc
+source ~/.bashrc
+
 # Send a Discord notification to inform of configuration completion
-send_discord_notification "Configuration successfully completed on $(hostname). Restarting server in $time seconds..."
+send_discord_notification "Configuration successfully completed on $(hostname). Restarting server in $time seconds..." "$discord_webhook_url"
 
 # Echo to credit the author of the script
 print_space_line
@@ -392,3 +358,4 @@ print_space_line
 echo -e "${BLUE}Restarting the server in $time seconds...${NC}"
 sleep 60
 sudo reboot
+# endregion main
