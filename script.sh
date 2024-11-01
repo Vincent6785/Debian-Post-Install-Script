@@ -103,12 +103,12 @@ fi
 print_space_line
 echo -e "${BLUE}LEGEND:${NC}"
 echo -e "${GREEN}Commands that succeed.${NC}"
-echo -e "${BLUE}Commands may require attention, without being a fatal error.${NC}"
+echo -e "${YELLOW}Commands may require attention, without being a fatal error.${NC}"
 echo -e "${RED}Commands that fail.${NC}"
 echo -e "${BLUE}Additional or progress information.${NC}"
 
-echo -e "${GREEN}Configuration complete. The script is now autonomous.${NC}"
 print_space_line
+echo -e "${GREEN}Configuration complete. The script is now autonomous.${NC}"
 
 # Update the system
 print_space_line
@@ -216,7 +216,6 @@ echo -e "${GREEN}SSH service configuration complete.${NC}"
 # Iptables Configuration
 print_space_line
 echo -e "${BLUE}Iptables Configuration${NC}"
-echo -e "${BLUE}The rules will be applied on system reboot.${NC}"
 # Remove the rules.v4 file if it exists
 iptables_rules_file="/etc/iptables/rules.v4"
 sudo rm $iptables_rules_file
@@ -262,7 +261,7 @@ echo "-A INPUT -p tcp --sport 443 -m conntrack --ctstate ESTABLISHED -j LOG --lo
 echo "-A OUTPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j LOG --log-prefix \"Output port 443 sent: \" --log-level 4" >> $iptables_rules_file
 # End the rules file
 echo "COMMIT" >> $iptables_rules_file
-echo -e "${GREEN}Iptables rules have been saved in $iptables_rules_file but will only be applied on reboot.${NC}"
+echo -e "${GREEN}Iptables configuration completed.${NC}"
 
 # Configure Fail2Ban
 print_space_line
