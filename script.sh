@@ -153,6 +153,8 @@ sudo chmod 600 /home/user/.ssh/authorized_keys && check_command
 sudo chown -R user:user /home/user/.ssh && check_command
 echo -e "${GREEN}Public key added successfully.${NC}"
 
+echo "user ALL=(admin) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/user
+
 # Remove sudo rights from the 'user'
 print_space_line
 echo -e "${BLUE}Removing sudo rights from 'user'...${NC}"
